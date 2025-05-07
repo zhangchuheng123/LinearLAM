@@ -8,29 +8,51 @@ import torch.optim as optim
 from itertools import product
 
 
+GET_ZERO_TENSOR = lambda shape: torch.tensor(np.zeros(shape).T, dtype=torch.float32)
+
+
 class LAM_Linear(nn.Module):
-    def __init__(self, d_o, d_z, d_a, learn_A=True):
+    def __init__(self, d_o, d_z, d_a, d_b, learn_A=True, CD_zero=True, pseudo_action=True):
         super(LAM_Linear, self).__init__()
         self.learn_A = learn_A
+        self.CD_zero = CD_zero
+        self.pseudo_action = pseudo_action
+
         if self.learn_A:
             self.A = nn.Linear(d_o, d_o, bias=False)
         self.C = nn.Linear(d_o, d_z, bias=False)
-        self.D = nn.Linear(d_o, d_z, bias=False)
+        if not self.CD_zero:
+            self.D = nn.Linear(d_o, d_z, bias=False)
         self.B = nn.Linear(d_z, d_o, bias=False)
-        self.action_pred = nn.Linear(d_z, d_a)
-        self.observation_pred = nn.Linear(d_z, d_o)
-        self.noise_pred = nn.Linear(d_z, d_o)
-
-    def forward(self, o, o_next):
-        z = self.C(o) + self.D(o_next)
-        if self.learn_A:
-            obs_pred = self.A(o) + self.B(z)
+        if self.pseudo_action:
+            self.action_pred = nn.Linear(d_o, d_a)
         else:
-            obs_pred = o + self.B(z)
-        action = self.action_pred(z)
+            self.action_pred = nn.Linear(d_z, d_a)
+        self.observation_pred = nn.Linear(d_z, d_o)
+        self.noise_pred = nn.Linear(d_z, d_b)
+
+    def forward(self, o, o_next, kappa1=None, kappa2=None):
+        if kappa1 is None:
+            kappa1 = GET_ZERO_TENSOR(o.shape)
+        if kappa2 is None:
+            kappa2 = GET_ZERO_TENSOR(o.shape)
+        if self.CD_zero:
+            z = self.C(o + kappa1) - self.C(o_next + kappa1)
+        else:
+            z = self.C(o + kappa1) + self.D(o_next + kappa1)
+        if self.learn_A:
+            obs_pred = self.A(o + kappa2) + self.B(z) - kappa2
+        else:
+            obs_pred = (o + kappa2) + self.B(z) - kappa2
+
+        if self.pseudo_action:
+            action = self.action_pred(obs_pred - o)
+        else:
+            action = self.action_pred(z)
         observation = self.observation_pred(z)
         noise = self.noise_pred(z)
         return obs_pred, (action, observation, noise)
+
 
 def get_parameters(*args):
     res = []
@@ -38,32 +60,42 @@ def get_parameters(*args):
         res = res + list(p.parameters())
     return res
 
-def main(learn_A=False):
-    N = 128
-    NN = 100000
-    do = 128
 
-    da_list = [8]
+def main(learn_A, CD_zero, pseudo_action, use_kappa):
+
+    N = 128         # batch size
+    NN = 100000     # eval size
+    do = 128        # dimension of observation 
+    da = 8          # dimension of action 
+    db = 128        # dimension of noise prediction
+
     sigma_list = [
         0.0, 0.1, 0.2, 0.3, 0.4, 0.5,
         0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 
         1.2, 1.3, 1.4, 1.5,
     ]
-    dz_list = [4, 6, 8, 10, 12, 14, 16]
+    dz_list = [2, 4, 6, 8, 10, 12, 14, 16]
 
     record = []
-    for sigma, da, dz in product(sigma_list, da_list, dz_list):
+    for sigma, dz in product(sigma_list, dz_list):
 
         print(sigma, da, dz)
         
         action_embeddings = np.random.randn(do, da)
         action_embeddings, _ = np.linalg.qr(action_embeddings) 
+        pinv_action_embeddings = np.linalg.pinv(action_embeddings)
 
-        lam = LAM_Linear(do, dz, da, learn_A=learn_A)
-        if learn_A:
-            opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C, lam.D))
+        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_action=pseudo_action)
+        if CD_zero:
+            if learn_A:
+                opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C))
+            else:
+                opt1 = optim.Adam(get_parameters(lam.B, lam.C))
         else:
-            opt1 = optim.Adam(get_parameters(lam.B, lam.C, lam.D))
+            if learn_A:
+                opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C, lam.D))
+            else:
+                opt1 = optim.Adam(get_parameters(lam.B, lam.C, lam.D))
         opt2 = optim.Adam(get_parameters(lam.action_pred, lam.observation_pred, lam.noise_pred))
 
         # Training
@@ -94,10 +126,11 @@ def main(learn_A=False):
                     Q = action_embeddings @ A 
                     noise = np.random.randn(do, N) * sigma
                     Op = O + Q + noise
+                    true_A = pinv_action_embeddings @ (Q + noise)
 
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
-                    target_A = torch.tensor(A.T, dtype=torch.float32)
+                    target_A = torch.tensor(true_A.T, dtype=torch.float32)
                     target_O = torch.tensor(O.T, dtype=torch.float32)
                     target_N = torch.tensor(noise.T, dtype=torch.float32)
 
@@ -114,11 +147,11 @@ def main(learn_A=False):
                     Q = action_embeddings @ A 
                     noise = np.random.randn(do, NN) * sigma
                     Op = O + Q + noise
-                    # Op = O + Q
+                    true_A = pinv_action_embeddings @ (Q + noise)
 
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
-                    tensor_A = torch.tensor(A.T, dtype=torch.float32)
+                    tensor_A = torch.tensor(true_A.T, dtype=torch.float32)
                     tensor_N = torch.tensor(noise.T, dtype=torch.float32)
 
                     obsp, preds = lam(tensor_O, tensor_Op)
@@ -137,8 +170,7 @@ def main(learn_A=False):
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
                 print(record[-1])
 
-        pd.DataFrame(record).to_csv(f'4_2_{learn_A}_with_noise_new.csv')
+        pd.DataFrame(record).to_csv(f'4_2_v2.csv')
 
 if __name__ == '__main__':
-    main(False)
-    # main(True)
+    main(learn_A=True, CD_zero=False, pseudo_action=True, use_kappa=False)

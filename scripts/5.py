@@ -113,8 +113,8 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
                 for i_eval in range(5000):
 
                     O = np.random.randn(do, N)
-                    # A = (1 - chi) * np.random.randn(da, N) + chi * policy_embeddings @ O
-                    A = np.random.randn(da, N)
+                    A = (1 - chi) * np.random.randn(da, N) + chi * policy_embeddings @ O
+                    # A = np.random.randn(da, N)
                     Q = action_embeddings @ A 
 
                     Op = O + Q
@@ -158,7 +158,7 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
                 print(record[-1])
 
-        pd.DataFrame(record).to_csv(f'5_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_evalrand.csv')
+        pd.DataFrame(record).to_csv(f'5_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_ftchi_evalrand.csv')
 
 if __name__ == '__main__':
     main(learn_A=True, CD_zero=False, pseudo_action=True)

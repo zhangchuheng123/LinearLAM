@@ -61,7 +61,7 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
     do = 128
 
     da = 8
-    db = 8
+    db = 128    # dimension of noise prediction
 
     dz_list = list(range(2, 17))
     # chi_list = [0, 0.2, 0.4, 0.6, 0.8, 1.0]
@@ -79,7 +79,7 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
         policy_embeddings, _ = np.linalg.qr(policy_embeddings.T)
         policy_embeddings = policy_embeddings.T
 
-        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero)
+        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_action=pseudo_action)
         if CD_zero:
             if learn_A:
                 opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C))
@@ -98,6 +98,7 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
             O = np.random.randn(do, N)
             A = (1 - chi) * np.random.randn(da, N) + chi * policy_embeddings @ O
             Q = action_embeddings @ A 
+            noise = np.random.rand(do, N) * 0.1
             if use_kappa:
                 kappa1 = torch.tensor(np.random.randn(N, do) * 0.1, dtype=torch.float32)
                 kappa2 = torch.tensor(np.random.randn(N, do) * 0.1, dtype=torch.float32)
@@ -105,7 +106,7 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
                 kappa1 = GET_ZERO_TENSOR((do, N))
                 kappa2 = GET_ZERO_TENSOR((do, N))
 
-            Op = O + Q
+            Op = O + Q + noise
             # Checked: Var(O) = do   Var(Q) = da
 
             tensor_O = torch.tensor(O.T, dtype=torch.float32)
@@ -125,17 +126,19 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
                     # A = (1 - chi) * np.random.randn(da, N) + chi * policy_embeddings @ O
                     A = np.random.randn(da, N)
                     Q = action_embeddings @ A 
+                    noise = np.random.rand(do, N) * 0.1
 
-                    Op = O + Q
+                    Op = O + Q + noise
 
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
                     target_A = torch.tensor(A.T, dtype=torch.float32)
                     target_O = torch.tensor(O.T, dtype=torch.float32)
+                    target_N = torch.tensor(noise.T, dtype=torch.float32)
 
                     _, preds = lam(tensor_O, tensor_Op, GET_ZERO_TENSOR((do, N)), GET_ZERO_TENSOR((do, N)))
                     act, obs, noi = preds
-                    loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O)
+                    loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O) + nn.MSELoss()(noi, target_N)
                     opt2.zero_grad()
                     loss.backward()
                     opt2.step()
@@ -146,28 +149,29 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
                     # A = (1 - chi) * np.random.randn(da, NN) + chi * policy_embeddings @ O
                     A = np.random.randn(da, NN)
                     Q = action_embeddings @ A 
+                    noise = np.random.rand(do, NN) * 0.1
 
-                    Op = O + Q
+                    Op = O + Q + noise
 
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
                     target_A = torch.tensor(A.T, dtype=torch.float32)
                     target_O = torch.tensor(O.T, dtype=torch.float32)
+                    target_N = torch.tensor(noise.T, dtype=torch.float32)
                     obsp, preds = lam(tensor_O, tensor_Op, GET_ZERO_TENSOR((do, NN)), GET_ZERO_TENSOR((do, NN)))
                     act, obs, noi = preds
 
                     recon_loss = torch.mean(torch.sum(((obsp - tensor_Op) ** 2), axis=1)).item() / do
                     act_mse = torch.mean(torch.sum(((act - target_A) ** 2), axis=1)).item() / da
-                    obs_mse = torch.mean(torch.sum(((obs - tensor_O) ** 2), axis=1)).item() / do
-                    noi_mse = 1.0
-
+                    obs_mse = torch.mean(torch.sum(((obs - target_O) ** 2), axis=1)).item() / do
+                    noi_mse = torch.mean(torch.sum(((noi - target_N) ** 2), axis=1)).item() / do
 
                 record.append(dict(
                     do=do, da=da, dz=dz, db=db, chi=chi, iter=i_batch, 
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
                 print(record[-1])
 
-        pd.DataFrame(record).to_csv(f'6_use_kappa_{use_kappa}.csv')
+        pd.DataFrame(record).to_csv(f'6_use_kappa_{use_kappa}_noise.csv')
 
 if __name__ == '__main__':
     main(learn_A=True, CD_zero=False, pseudo_action=False, use_kappa=True)
