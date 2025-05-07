@@ -163,7 +163,10 @@ def main(learn_A, CD_zero, pseudo_action):
                     recon_loss = torch.mean(torch.sum(((obsp - tensor_Op) ** 2), axis=1)).item() / do
                     act_mse = torch.mean(torch.sum(((act - target_A) ** 2), axis=1)).item() / da
                     obs_mse = torch.mean(torch.sum(((obs - target_O) ** 2), axis=1)).item() / do
-                    noi_mse = torch.mean(torch.sum(((noi - target_N) ** 2), axis=1)).item() / do / (sigma ** 2)
+                    if sigma > 0:
+                        noi_mse = torch.mean(torch.sum(((noi - target_N) ** 2), axis=1)).item() / do / (sigma ** 2)
+                    else:
+                        noi_mse = 1.0
 
                 record.append(dict(
                     do=do, da=da, dz=dz, db=db, chi=chi, iter=i_batch, 
