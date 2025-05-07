@@ -8,26 +8,47 @@ import torch.optim as optim
 from itertools import product
 
 
+GET_ZERO_TENSOR = lambda shape: torch.tensor(np.zeros(shape).T, dtype=torch.float32)
+
+
 class LAM_Linear(nn.Module):
-    def __init__(self, d_o, d_z, d_a, d_b, learn_A=True):
+    def __init__(self, d_o, d_z, d_a, d_b, learn_A=True, CD_zero=True, pseudo_action=True):
         super(LAM_Linear, self).__init__()
         self.learn_A = learn_A
+        self.CD_zero = CD_zero
+        self.pseudo_action = pseudo_action
+
         if self.learn_A:
             self.A = nn.Linear(d_o, d_o, bias=False)
         self.C = nn.Linear(d_o, d_z, bias=False)
-        self.D = nn.Linear(d_o, d_z, bias=False)
+        if not self.CD_zero:
+            self.D = nn.Linear(d_o, d_z, bias=False)
         self.B = nn.Linear(d_z, d_o, bias=False)
-        self.action_pred = nn.Linear(d_z, d_a)
+        if self.pseudo_action:
+            self.action_pred = nn.Linear(d_o, d_a)
+        else:
+            self.action_pred = nn.Linear(d_z, d_a)
         self.observation_pred = nn.Linear(d_z, d_o)
         self.noise_pred = nn.Linear(d_z, d_b)
 
-    def forward(self, o, o_next):
-        z = self.C(o) + self.D(o_next)
-        if self.learn_A:
-            obs_pred = self.A(o) + self.B(z)
+    def forward(self, o, o_next, kappa1=None, kappa2=None):
+        if kappa1 is None:
+            kappa1 = GET_ZERO_TENSOR(o.shape)
+        if kappa2 is None:
+            kappa2 = GET_ZERO_TENSOR(o.shape)
+        if self.CD_zero:
+            z = self.C(o + kappa1) - self.C(o_next + kappa1)
         else:
-            obs_pred = o + self.B(z)
-        action = self.action_pred(z)
+            z = self.C(o + kappa1) + self.D(o_next + kappa1)
+        if self.learn_A:
+            obs_pred = self.A(o + kappa2) + self.B(z) - kappa2
+        else:
+            obs_pred = (o + kappa2) + self.B(z) - kappa2
+
+        if self.pseudo_action:
+            action = self.action_pred(obs_pred - o)
+        else:
+            action = self.action_pred(z)
         observation = self.observation_pred(z)
         noise = self.noise_pred(z)
         return obs_pred, (action, observation, noise)
@@ -38,22 +59,22 @@ def get_parameters(*args):
         res = res + list(p.parameters())
     return res
 
-def main(learn_A=False):
-    N = 128
-    NN = 100000
-    do = 128
+def main(learn_A=True, CD_zero=False, pseudo_action=True, use_kappa=False):
 
-    da = 8
-    db = 8
+    N = 128         # batch size
+    NN = 100000     # eval size
+    do = 128        # dimension of observation 
+    da = 8          # dimension of action 
+    db = 8          # dimension of noise prediction
+
 
     dz_list = list(range(2, 17))
     sigma_list = [0.5, 2.0]
     
-
     record = []
     for sigma, dz in product(sigma_list, dz_list):
 
-        print(sigma, dz)
+        print(f'sigma={sigma} da={da} dz={dz}')
 
         action_embeddings = np.random.randn(do, da)
         action_embeddings, _ = np.linalg.qr(action_embeddings) 
@@ -61,11 +82,18 @@ def main(learn_A=False):
         others_embeddings = np.random.randn(do, db)
         others_embeddings, _ = np.linalg.qr(others_embeddings)
 
-        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A)
-        if learn_A:
-            opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C, lam.D))
+        # Get model and optimizers
+        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_action=pseudo_action)
+        if CD_zero:
+            if learn_A:
+                opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C))
+            else:
+                opt1 = optim.Adam(get_parameters(lam.B, lam.C))
         else:
-            opt1 = optim.Adam(get_parameters(lam.B, lam.C, lam.D))
+            if learn_A:
+                opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C, lam.D))
+            else:
+                opt1 = optim.Adam(get_parameters(lam.B, lam.C, lam.D))
         opt2 = optim.Adam(get_parameters(lam.action_pred, lam.observation_pred, lam.noise_pred))
 
         # Training
@@ -76,6 +104,7 @@ def main(learn_A=False):
             Q = action_embeddings @ A 
             B = np.random.randn(db, N)
             noise = others_embeddings @ B * sigma
+
             Op = O + Q + noise
             # Checked: Var(O) = do   Var(Q) = da
 
@@ -139,10 +168,12 @@ def main(learn_A=False):
 
                 record.append(dict(
                     do=do, da=da, dz=dz, db=db, sigma=sigma, iter=i_batch, 
-                    recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
+                    recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse
+                ))
 
-        pd.DataFrame(record).to_csv(f'4_3_{learn_A}_long_train_predB.csv')
+                total_record = pd.DataFrame(record)
+                total_record.to_csv(f'4_3_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}.csv')
+
 
 if __name__ == '__main__':
-    main(False)
-    # main(True)
+    main(learn_A=True, CD_zero=False, pseudo_action=True, use_kappa=False)

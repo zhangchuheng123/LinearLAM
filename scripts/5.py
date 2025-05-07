@@ -8,6 +8,9 @@ import torch.optim as optim
 from itertools import product
 
 
+GET_ZERO_TENSOR = lambda shape: torch.tensor(np.zeros(shape).T, dtype=torch.float32)
+
+
 class LAM_Linear(nn.Module):
     def __init__(self, d_o, d_z, d_a, d_b, learn_A=True, CD_zero=True, pseudo_action=True):
         super(LAM_Linear, self).__init__()
@@ -28,15 +31,19 @@ class LAM_Linear(nn.Module):
         self.observation_pred = nn.Linear(d_z, d_o)
         self.noise_pred = nn.Linear(d_z, d_b)
 
-    def forward(self, o, o_next):
+    def forward(self, o, o_next, kappa1=None, kappa2=None):
+        if kappa1 is None:
+            kappa1 = GET_ZERO_TENSOR(o.shape)
+        if kappa2 is None:
+            kappa2 = GET_ZERO_TENSOR(o.shape)
         if self.CD_zero:
-            z = self.C(o) - self.C(o_next)
+            z = self.C(o + kappa1) - self.C(o_next + kappa1)
         else:
-            z = self.C(o) + self.D(o_next)
+            z = self.C(o + kappa1) + self.D(o_next + kappa1)
         if self.learn_A:
-            obs_pred = self.A(o) + self.B(z)
+            obs_pred = self.A(o + kappa2) + self.B(z) - kappa2
         else:
-            obs_pred = o + self.B(z)
+            obs_pred = (o + kappa2) + self.B(z) - kappa2
 
         if self.pseudo_action:
             action = self.action_pred(obs_pred - o)
@@ -45,6 +52,7 @@ class LAM_Linear(nn.Module):
         observation = self.observation_pred(z)
         noise = self.noise_pred(z)
         return obs_pred, (action, observation, noise)
+
 
 def get_parameters(*args):
     res = []
@@ -157,9 +165,9 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
                 record.append(dict(
                     do=do, da=da, dz=dz, db=db, chi=chi, iter=i_batch, 
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
-                print(record[-1])
 
-        pd.DataFrame(record).to_csv(f'5_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_morechi_evalrand.csv')
+                total_record = pd.DataFrame(record)
+                total_record.to_csv(f'5_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_nonoiseeval{no_noise_eval}.csv')
 
 if __name__ == '__main__':
     main(learn_A=True, CD_zero=False, pseudo_action=True)
