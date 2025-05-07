@@ -62,12 +62,12 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
     db = 8
 
     dz_list = list(range(2, 17))
-    chi_list = [0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    chi_list = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     
     record = []
     for chi, dz in product(chi_list, dz_list):
 
-        print(chi, dz)
+        print(f'chi={chi} dz={dz}')
 
         action_embeddings = np.random.randn(do, da)
         action_embeddings, _ = np.linalg.qr(action_embeddings) 
@@ -76,7 +76,8 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
         policy_embeddings, _ = np.linalg.qr(policy_embeddings.T)
         policy_embeddings = policy_embeddings.T
 
-        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero)
+        # Get model and optimizers
+        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_action=pseudo_action)
         if CD_zero:
             if learn_A:
                 opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C))
@@ -143,7 +144,7 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
                     target_A = torch.tensor(A.T, dtype=torch.float32)
-                    target_O = torch.tensor(O.T, dtype=torch.float32)
+
                     obsp, preds = lam(tensor_O, tensor_Op)
                     act, obs, noi = preds
 
@@ -158,7 +159,7 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
                 print(record[-1])
 
-        pd.DataFrame(record).to_csv(f'5_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_ftchi_evalrand.csv')
+        pd.DataFrame(record).to_csv(f'5_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_morechi_evalrand.csv')
 
 if __name__ == '__main__':
     main(learn_A=True, CD_zero=False, pseudo_action=True)

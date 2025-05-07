@@ -61,7 +61,7 @@ def get_parameters(*args):
     return res
 
 
-def main(learn_A, CD_zero, pseudo_action, use_kappa):
+def main(learn_A, CD_zero, pseudo_action, use_kappa, no_noise_eval=True):
 
     N = 128         # batch size
     NN = 100000     # eval size
@@ -79,12 +79,13 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
     record = []
     for sigma, dz in product(sigma_list, dz_list):
 
-        print(sigma, da, dz)
+        print(f'sigma={sigma} da={da} dz={dz}')
         
         action_embeddings = np.random.randn(do, da)
         action_embeddings, _ = np.linalg.qr(action_embeddings) 
         pinv_action_embeddings = np.linalg.pinv(action_embeddings)
 
+        # Get model and optimizers
         lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_action=pseudo_action)
         if CD_zero:
             if learn_A:
@@ -105,6 +106,7 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
             A = np.random.randn(da, N)
             Q = action_embeddings @ A 
             noise = np.random.randn(do, N) * sigma
+
             Op = O + Q + noise
             # Checked: Var(O) = do   Var(Q) = da
 
@@ -124,35 +126,51 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
                     O = np.random.randn(do, N)
                     A = np.random.randn(da, N)
                     Q = action_embeddings @ A 
-                    noise = np.random.randn(do, N) * sigma
-                    Op = O + Q + noise
-                    true_A = pinv_action_embeddings @ (Q + noise)
+
+                    if no_noise_eval:
+                        Op = O + Q 
+                        true_A = A
+                    else:
+                        noise = np.random.randn(do, N) * sigma
+                        Op = O + Q + noise
+                        true_A = pinv_action_embeddings @ (Q + noise)
 
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
                     target_A = torch.tensor(true_A.T, dtype=torch.float32)
                     target_O = torch.tensor(O.T, dtype=torch.float32)
-                    target_N = torch.tensor(noise.T, dtype=torch.float32)
+                    if not no_noise_eval:
+                        target_N = torch.tensor(noise.T, dtype=torch.float32)
 
                     _, preds = lam(tensor_O, tensor_Op)
                     act, obs, noi = preds
-                    loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O) + nn.MSELoss()(noi, target_N)
+                    if no_noise_eval:
+                        loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O)
+                    else:
+                        loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O) + nn.MSELoss()(noi, target_N)
                     opt2.zero_grad()
                     loss.backward()
                     opt2.step()
 
                 if True:
+
                     O = np.random.randn(do, NN)
                     A = np.random.randn(da, NN)
                     Q = action_embeddings @ A 
-                    noise = np.random.randn(do, NN) * sigma
-                    Op = O + Q + noise
-                    true_A = pinv_action_embeddings @ (Q + noise)
+
+                    if no_noise_eval:
+                        Op = O + Q
+                        true_A = A
+                    else:
+                        noise = np.random.randn(do, NN) * sigma
+                        Op = O + Q + noise
+                        true_A = pinv_action_embeddings @ (Q + noise)
 
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
                     tensor_A = torch.tensor(true_A.T, dtype=torch.float32)
-                    tensor_N = torch.tensor(noise.T, dtype=torch.float32)
+                    if not no_noise_eval:
+                        tensor_N = torch.tensor(noise.T, dtype=torch.float32)
 
                     obsp, preds = lam(tensor_O, tensor_Op)
                     act, obs, noi = preds
@@ -160,17 +178,18 @@ def main(learn_A, CD_zero, pseudo_action, use_kappa):
                     recon_loss = torch.mean(torch.sum(((obsp - tensor_Op) ** 2), axis=1)).item() / do
                     act_mse = torch.mean(torch.sum(((act - tensor_A) ** 2), axis=1)).item() / da
                     obs_mse = torch.mean(torch.sum(((obs - tensor_O) ** 2), axis=1)).item() / do
-                    if sigma == 0:
+                    if sigma == 0 or no_noise_eval:
                         noi_mse = 1.0
                     else:
                         noi_mse = torch.mean(torch.sum(((noi - tensor_N) ** 2), axis=1)).item() / do / (sigma ** 2)
 
                 record.append(dict(
                     do=do, da=da, dz=dz, sigma=sigma, iter=i_batch, 
-                    recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
-                print(record[-1])
+                    recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse
+                ))
 
-        pd.DataFrame(record).to_csv(f'4_2_v2.csv')
+                total_record = pd.DataFrame(record)
+                total_record.to_csv(f'4_2_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_nonoiseeval{no_noise_eval}.csv')
 
 if __name__ == '__main__':
-    main(learn_A=True, CD_zero=False, pseudo_action=True, use_kappa=False)
+    main(learn_A=True, CD_zero=False, pseudo_action=True, use_kappa=False, no_noise_eval=True)
