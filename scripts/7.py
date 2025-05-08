@@ -57,60 +57,83 @@ class LAM_Linear(nn.Module):
             noise = self.noise_pred(z)
         return obs_pred, (action, observation, noise)
 
-
+        
 def get_parameters(*args):
     res = []
     for p in args:
         res = res + list(p.parameters())
     return res
 
-def main(learn_A=True, CD_zero=False, pseudo_latent=True):
+def main(learn_A=True, CD_zero=False, pseudo_latent=True, use_kappa=False):
 
     N = 128         # batch size
     NN = 100000     # eval size
     do = 128        # dimension of observation 
-    db = 1          # db is not used
+    da = 8          # dimension of action 
+    db = 8          # dimension of noise prediction
+    kappa_coeff = 0.1
 
-    da_list = list(range(2, 17, 2))
-    dz_list = list(range(1, 17))
-
+    dz_list = list(range(2, 17))
+    sigma_list = [0.5, 1.0, 2.0]
+    mask_ratio_list = [0.01, 0.05, 0.10]
+    
     record = []
-    for da, dz in product(da_list, dz_list):
+    for sigma, dz, mask_ratio in product(sigma_list, dz_list, mask_ratio_list):
 
-        print(f'da={da} dz={dz}')
+        print(f'sigma={sigma} da={da} dz={dz} mask_ratio={mask_ratio}')
 
         action_embeddings = np.random.randn(do, da)
         action_embeddings, _ = np.linalg.qr(action_embeddings) 
+
+        others_embeddings = np.random.randn(do, db)
+        others_embeddings, _ = np.linalg.qr(others_embeddings)
 
         # Get model and optimizers
         lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_latent=pseudo_latent)
         if CD_zero:
             if learn_A:
-                opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C))
+                opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C, lam.action_pred))
             else:
-                opt1 = optim.Adam(get_parameters(lam.B, lam.C))
+                opt1 = optim.Adam(get_parameters(lam.B, lam.C, lam.action_pred))
         else:
             if learn_A:
-                opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C, lam.D))
+                opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C, lam.D, lam.action_pred))
             else:
-                opt1 = optim.Adam(get_parameters(lam.B, lam.C, lam.D))
+                opt1 = optim.Adam(get_parameters(lam.B, lam.C, lam.D, lam.action_pred))
         opt2 = optim.Adam(get_parameters(lam.action_pred, lam.observation_pred, lam.noise_pred))
 
         # Training
-        for i_batch in range(20001):
+        for i_batch in range(40001):
 
             O = np.random.randn(do, N)
             A = np.random.randn(da, N)
             Q = action_embeddings @ A 
+            B = np.random.randn(db, N)
+            noise = others_embeddings @ B * sigma
 
-            Op = O + Q
+            kappa1 = torch.tensor(np.random.randn(N, do) * kappa_coeff, dtype=torch.float32)
+            kappa2 = torch.tensor(np.random.randn(N, do) * kappa_coeff, dtype=torch.float32)
+
+            Op = O + Q + noise
             # Checked: Var(O) = do   Var(Q) = da
 
             tensor_O = torch.tensor(O.T, dtype=torch.float32)
             tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
+            target_A = torch.tensor(A.T, dtype=torch.float32)
 
-            obs_pred, _ = lam(tensor_O, tensor_Op)
-            loss = nn.MSELoss()(obs_pred, tensor_Op)
+            obs_pred, preds = lam(tensor_O, tensor_Op, kappa1, kappa2)
+            act, _, _ = preds
+
+            mask = torch.rand((N, )) < mask_ratio
+            action_loss = nn.MSELoss(reduction='none')(act, target_A).mean(1)
+            action_loss = (action_loss * mask.float()).sum()
+            sum_mask = mask.sum()
+            if sum_mask > 0:
+                action_loss = action_loss / sum_mask
+            else:
+                action_loss = 0
+
+            loss = nn.MSELoss()(obs_pred, tensor_Op) + action_loss
             opt1.zero_grad()
             loss.backward()
             opt1.step()
@@ -122,33 +145,36 @@ def main(learn_A=True, CD_zero=False, pseudo_latent=True):
                     O = np.random.randn(do, N)
                     A = np.random.randn(da, N)
                     Q = action_embeddings @ A 
-
-                    Op = O + Q
+                    B = np.random.randn(db, N)
+                    noise = others_embeddings @ B * sigma
+                    Op = O + Q + noise
 
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
                     target_A = torch.tensor(A.T, dtype=torch.float32)
                     target_O = torch.tensor(O.T, dtype=torch.float32)
+                    target_B = torch.tensor(B.T, dtype=torch.float32)
 
                     _, preds = lam(tensor_O, tensor_Op)
                     act, obs, noi = preds
-                    # No noise in this setting
-                    loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O)
+                    loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O) + nn.MSELoss()(noi, target_B)
                     opt2.zero_grad()
                     loss.backward()
                     opt2.step()
 
                 if True:
-
-                    O = np.random.randn(do, NN)
-                    A = np.random.randn(da, NN)
+                    O = np.random.randn(do, N)
+                    A = np.random.randn(da, N)
                     Q = action_embeddings @ A 
-
-                    Op = O + Q
+                    B = np.random.randn(db, N)
+                    noise = others_embeddings @ B * sigma
+                    Op = O + Q + noise
+                    # Op = O + Q
 
                     tensor_O = torch.tensor(O.T, dtype=torch.float32)
                     tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
                     tensor_A = torch.tensor(A.T, dtype=torch.float32)
+                    tensor_B = torch.tensor(B.T, dtype=torch.float32)
 
                     obsp, preds = lam(tensor_O, tensor_Op)
                     act, obs, noi = preds
@@ -156,15 +182,19 @@ def main(learn_A=True, CD_zero=False, pseudo_latent=True):
                     recon_loss = torch.mean(torch.sum(((obsp - tensor_Op) ** 2), axis=1)).item() / do
                     act_mse = torch.mean(torch.sum(((act - tensor_A) ** 2), axis=1)).item() / da
                     obs_mse = torch.mean(torch.sum(((obs - tensor_O) ** 2), axis=1)).item() / do
-                    noi_mse = 1.0
-    
+                    if sigma == 0:
+                        noi_mse = 1.0
+                    else:
+                        noi_mse = torch.mean(torch.sum(((noi - tensor_B) ** 2), axis=1)).item() / db
+
                 record.append(dict(
-                    do=do, da=da, dz=dz, db=db, iter=i_batch, 
+                    do=do, da=da, dz=dz, db=db, sigma=sigma, iter=i_batch, 
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse
                 ))
 
                 total_record = pd.DataFrame(record)
-                total_record.to_csv(f'4_1_learnA{learn_A}_CDzero{CD_zero}_psdlatent{pseudo_latent}.csv')
+                total_record.to_csv(f'4_3_learnA{learn_A}_CDzero{CD_zero}_psdlatent{pseudo_latent}.csv')
+
 
 if __name__ == '__main__':
-    main(learn_A=True, CD_zero=False, pseudo_latent=True)
+    main(learn_A=True, CD_zero=False, pseudo_latent=False, use_kappa=True)

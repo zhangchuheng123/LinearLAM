@@ -12,11 +12,11 @@ GET_ZERO_TENSOR = lambda shape: torch.tensor(np.zeros(shape), dtype=torch.float3
 
 
 class LAM_Linear(nn.Module):
-    def __init__(self, d_o, d_z, d_a, d_b, learn_A=True, CD_zero=True, pseudo_action=True):
+    def __init__(self, d_o, d_z, d_a, d_b, learn_A=True, CD_zero=True, pseudo_latent=True):
         super(LAM_Linear, self).__init__()
         self.learn_A = learn_A
         self.CD_zero = CD_zero
-        self.pseudo_action = pseudo_action
+        self.pseudo_latent = pseudo_latent
 
         if self.learn_A:
             self.A = nn.Linear(d_o, d_o, bias=False)
@@ -24,12 +24,14 @@ class LAM_Linear(nn.Module):
         if not self.CD_zero:
             self.D = nn.Linear(d_o, d_z, bias=False)
         self.B = nn.Linear(d_z, d_o, bias=False)
-        if self.pseudo_action:
+        if self.pseudo_latent:
             self.action_pred = nn.Linear(d_o, d_a)
+            self.observation_pred = nn.Linear(d_o, d_o)
+            self.noise_pred = nn.Linear(d_o, d_b)
         else:
             self.action_pred = nn.Linear(d_z, d_a)
-        self.observation_pred = nn.Linear(d_z, d_o)
-        self.noise_pred = nn.Linear(d_z, d_b)
+            self.observation_pred = nn.Linear(d_z, d_o)
+            self.noise_pred = nn.Linear(d_z, d_b)
 
     def forward(self, o, o_next, kappa1=None, kappa2=None):
         if kappa1 is None:
@@ -45,12 +47,14 @@ class LAM_Linear(nn.Module):
         else:
             obs_pred = (o + kappa2) + self.B(z) - kappa2
 
-        if self.pseudo_action:
+        if self.pseudo_latent:
             action = self.action_pred(obs_pred - o)
+            observation = self.observation_pred(obs_pred - o)
+            noise = self.noise_pred(obs_pred - o)
         else:
             action = self.action_pred(z)
-        observation = self.observation_pred(z)
-        noise = self.noise_pred(z)
+            observation = self.observation_pred(z)
+            noise = self.noise_pred(z)
         return obs_pred, (action, observation, noise)
 
 
@@ -60,7 +64,7 @@ def get_parameters(*args):
         res = res + list(p.parameters())
     return res
 
-def main(learn_A=True, CD_zero=True, pseudo_action=True):
+def main(learn_A=True, CD_zero=True, pseudo_latent=True):
     
     N = 128
     NN = 10000
@@ -85,7 +89,7 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
         policy_embeddings = policy_embeddings.T
 
         # Get model and optimizers
-        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_action=pseudo_action)
+        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_latent=pseudo_latent)
         if CD_zero:
             if learn_A:
                 opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C))
@@ -167,7 +171,7 @@ def main(learn_A=True, CD_zero=True, pseudo_action=True):
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
 
                 total_record = pd.DataFrame(record)
-                total_record.to_csv(f'5_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_nonoiseeval{no_noise_eval}.csv')
+                total_record.to_csv(f'5_learnA{learn_A}_CDzero{CD_zero}_psdlatent{pseudo_latent}.csv')
 
 if __name__ == '__main__':
-    main(learn_A=True, CD_zero=False, pseudo_action=True)
+    main(learn_A=True, CD_zero=False, pseudo_latent=True)
