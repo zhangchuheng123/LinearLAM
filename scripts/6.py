@@ -173,7 +173,7 @@ def main(learn_A, CD_zero, pseudo_latent):
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
 
                 total_record = pd.DataFrame(record)
-                total_record.to_csv(f'6_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_latent}_nonoiseeval{no_noise_eval}.csv')
+                total_record.to_csv(f'6_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_latent}.csv')
 
 if __name__ == '__main__':
     main(learn_A=True, CD_zero=False, pseudo_latent=False)
