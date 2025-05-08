@@ -8,15 +8,15 @@ import torch.optim as optim
 from itertools import product
 
 
-GET_ZERO_TENSOR = lambda shape: torch.tensor(np.zeros(shape).T, dtype=torch.float32)
+GET_ZERO_TENSOR = lambda shape: torch.tensor(np.zeros(shape), dtype=torch.float32)
 
 
 class LAM_Linear(nn.Module):
-    def __init__(self, d_o, d_z, d_a, d_b, learn_A=True, CD_zero=True, pseudo_action=True):
+    def __init__(self, d_o, d_z, d_a, d_b, learn_A=True, CD_zero=True, pseudo_latent=True):
         super(LAM_Linear, self).__init__()
         self.learn_A = learn_A
         self.CD_zero = CD_zero
-        self.pseudo_action = pseudo_action
+        self.pseudo_latent = pseudo_latent
 
         if self.learn_A:
             self.A = nn.Linear(d_o, d_o, bias=False)
@@ -24,7 +24,7 @@ class LAM_Linear(nn.Module):
         if not self.CD_zero:
             self.D = nn.Linear(d_o, d_z, bias=False)
         self.B = nn.Linear(d_z, d_o, bias=False)
-        if self.pseudo_action:
+        if self.pseudo_latent:
             self.action_pred = nn.Linear(d_o, d_a)
         else:
             self.action_pred = nn.Linear(d_z, d_a)
@@ -45,7 +45,7 @@ class LAM_Linear(nn.Module):
         else:
             obs_pred = (o + kappa2) + self.B(z) - kappa2
 
-        if self.pseudo_action:
+        if self.pseudo_latent:
             action = self.action_pred(obs_pred - o)
         else:
             action = self.action_pred(z)
@@ -60,7 +60,7 @@ def get_parameters(*args):
         res = res + list(p.parameters())
     return res
 
-def main(learn_A, CD_zero, pseudo_action):
+def main(learn_A, CD_zero, pseudo_latent):
 
     N = 128
     NN = 10000
@@ -81,7 +81,7 @@ def main(learn_A, CD_zero, pseudo_action):
         action_embeddings, _ = np.linalg.qr(action_embeddings) 
 
         # Get model and optimizers
-        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_action=pseudo_action)
+        lam = LAM_Linear(do, dz, da, db, learn_A=learn_A, CD_zero=CD_zero, pseudo_latent=pseudo_latent)
         if CD_zero:
             if learn_A:
                 opt1 = optim.Adam(get_parameters(lam.A, lam.B, lam.C))
@@ -135,7 +135,7 @@ def main(learn_A, CD_zero, pseudo_action):
                     target_O = torch.tensor(O.T, dtype=torch.float32)
                     target_N = torch.tensor(noise.T, dtype=torch.float32)
 
-                    _, preds = lam(tensor_O, tensor_Op, GET_ZERO_TENSOR((do, N)), GET_ZERO_TENSOR((do, N)))
+                    _, preds = lam(tensor_O, tensor_Op)
                     act, obs, noi = preds
                     loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O) + nn.MSELoss()(noi, target_N)
                     opt2.zero_grad()
@@ -157,7 +157,7 @@ def main(learn_A, CD_zero, pseudo_action):
                     target_A = torch.tensor(A.T, dtype=torch.float32)
                     target_O = torch.tensor(O.T, dtype=torch.float32)
                     target_N = torch.tensor(noise.T, dtype=torch.float32)
-                    obsp, preds = lam(tensor_O, tensor_Op, GET_ZERO_TENSOR((do, NN)), GET_ZERO_TENSOR((do, NN)))
+                    obsp, preds = lam(tensor_O, tensor_Op)
                     act, obs, noi = preds
 
                     recon_loss = torch.mean(torch.sum(((obsp - tensor_Op) ** 2), axis=1)).item() / do
@@ -169,12 +169,12 @@ def main(learn_A, CD_zero, pseudo_action):
                         noi_mse = 1.0
 
                 record.append(dict(
-                    do=do, da=da, dz=dz, db=db, chi=chi, iter=i_batch, 
+                    do=do, da=da, dz=dz, db=db, sigma=sigma, iter=i_batch, 
                     recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse))
 
                 total_record = pd.DataFrame(record)
-                total_record.to_csv(f'6_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_action}_nonoiseeval{no_noise_eval}.csv')
+                total_record.to_csv(f'6_learnA{learn_A}_CDzero{CD_zero}_psdaction{pseudo_latent}_nonoiseeval{no_noise_eval}.csv')
 
 if __name__ == '__main__':
-    main(learn_A=True, CD_zero=False, pseudo_action=False)
+    main(learn_A=True, CD_zero=False, pseudo_latent=False)
 

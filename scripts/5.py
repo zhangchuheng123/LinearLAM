@@ -8,7 +8,7 @@ import torch.optim as optim
 from itertools import product
 
 
-GET_ZERO_TENSOR = lambda shape: torch.tensor(np.zeros(shape).T, dtype=torch.float32)
+GET_ZERO_TENSOR = lambda shape: torch.tensor(np.zeros(shape), dtype=torch.float32)
 
 
 class LAM_Linear(nn.Module):
