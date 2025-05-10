@@ -196,4 +196,4 @@ def main(learn_A, CD_zero, pseudo_latent, use_kappa, no_noise_eval=True):
                 total_record.to_csv(f'4_2_learnA{learn_A}_CDzero{CD_zero}_psdlatent{pseudo_latent}_nonoiseeval{no_noise_eval}.csv')
 
 if __name__ == '__main__':
-    main(learn_A=True, CD_zero=False, pseudo_latent=True, use_kappa=False, no_noise_eval=True)
+    main(learn_A=True, CD_zero=False, pseudo_latent=True, use_kappa=False, no_noise_eval=False)
