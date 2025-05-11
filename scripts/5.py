@@ -121,7 +121,7 @@ def main(learn_A=True, CD_zero=True, pseudo_latent=True):
             loss.backward()
             opt1.step()
 
-            if i_batch % 1000 == 0:
+            if i_batch % 10000 == 0:
                 # Evaluation
                 for i_eval in range(5000):
 
