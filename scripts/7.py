@@ -75,7 +75,7 @@ def main(learn_A=True, CD_zero=False, pseudo_latent=True, use_kappa=False):
 
     dz_list = list(range(2, 17))
     sigma_list = [0.5, 1.0, 2.0]
-    mask_ratio_list = [0.01, 0.05, 0.10]
+    mask_ratio_list = [0.0, 0.01, 0.05, 0.10]
     
     record = []
     for sigma, dz, mask_ratio in product(sigma_list, dz_list, mask_ratio_list):
@@ -138,62 +138,60 @@ def main(learn_A=True, CD_zero=False, pseudo_latent=True, use_kappa=False):
             loss.backward()
             opt1.step()
 
-            if i_batch % 1000 == 0:
-                # Evaluation
-                for i_eval in range(5000):
+        for i_eval in range(5000):
 
-                    O = np.random.randn(do, N)
-                    A = np.random.randn(da, N)
-                    Q = action_embeddings @ A 
-                    B = np.random.randn(db, N)
-                    noise = others_embeddings @ B * sigma
-                    Op = O + Q + noise
+            O = np.random.randn(do, N)
+            A = np.random.randn(da, N)
+            Q = action_embeddings @ A 
+            B = np.random.randn(db, N)
+            noise = others_embeddings @ B * sigma
+            Op = O + Q + noise
 
-                    tensor_O = torch.tensor(O.T, dtype=torch.float32)
-                    tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
-                    target_A = torch.tensor(A.T, dtype=torch.float32)
-                    target_O = torch.tensor(O.T, dtype=torch.float32)
-                    target_B = torch.tensor(B.T, dtype=torch.float32)
+            tensor_O = torch.tensor(O.T, dtype=torch.float32)
+            tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
+            target_A = torch.tensor(A.T, dtype=torch.float32)
+            target_O = torch.tensor(O.T, dtype=torch.float32)
+            target_B = torch.tensor(B.T, dtype=torch.float32)
 
-                    _, preds = lam(tensor_O, tensor_Op)
-                    act, obs, noi = preds
-                    loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O) + nn.MSELoss()(noi, target_B)
-                    opt2.zero_grad()
-                    loss.backward()
-                    opt2.step()
+            _, preds = lam(tensor_O, tensor_Op)
+            act, obs, noi = preds
+            loss = nn.MSELoss()(act, target_A) + nn.MSELoss()(obs, target_O) + nn.MSELoss()(noi, target_B)
+            opt2.zero_grad()
+            loss.backward()
+            opt2.step()
 
-                if True:
-                    O = np.random.randn(do, N)
-                    A = np.random.randn(da, N)
-                    Q = action_embeddings @ A 
-                    B = np.random.randn(db, N)
-                    noise = others_embeddings @ B * sigma
-                    Op = O + Q + noise
-                    # Op = O + Q
+        if True:
+            O = np.random.randn(do, N)
+            A = np.random.randn(da, N)
+            Q = action_embeddings @ A 
+            B = np.random.randn(db, N)
+            noise = others_embeddings @ B * sigma
+            Op = O + Q + noise
+            # Op = O + Q
 
-                    tensor_O = torch.tensor(O.T, dtype=torch.float32)
-                    tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
-                    tensor_A = torch.tensor(A.T, dtype=torch.float32)
-                    tensor_B = torch.tensor(B.T, dtype=torch.float32)
+            tensor_O = torch.tensor(O.T, dtype=torch.float32)
+            tensor_Op = torch.tensor(Op.T, dtype=torch.float32)
+            tensor_A = torch.tensor(A.T, dtype=torch.float32)
+            tensor_B = torch.tensor(B.T, dtype=torch.float32)
 
-                    obsp, preds = lam(tensor_O, tensor_Op)
-                    act, obs, noi = preds
+            obsp, preds = lam(tensor_O, tensor_Op)
+            act, obs, noi = preds
 
-                    recon_loss = torch.mean(torch.sum(((obsp - tensor_Op) ** 2), axis=1)).item() / do
-                    act_mse = torch.mean(torch.sum(((act - tensor_A) ** 2), axis=1)).item() / da
-                    obs_mse = torch.mean(torch.sum(((obs - tensor_O) ** 2), axis=1)).item() / do
-                    if sigma == 0:
-                        noi_mse = 1.0
-                    else:
-                        noi_mse = torch.mean(torch.sum(((noi - tensor_B) ** 2), axis=1)).item() / db
+            recon_loss = torch.mean(torch.sum(((obsp - tensor_Op) ** 2), axis=1)).item() / do
+            act_mse = torch.mean(torch.sum(((act - tensor_A) ** 2), axis=1)).item() / da
+            obs_mse = torch.mean(torch.sum(((obs - tensor_O) ** 2), axis=1)).item() / do
+            if sigma == 0:
+                noi_mse = 1.0
+            else:
+                noi_mse = torch.mean(torch.sum(((noi - tensor_B) ** 2), axis=1)).item() / db
 
-                record.append(dict(
-                    do=do, da=da, dz=dz, db=db, sigma=sigma, iter=i_batch, 
-                    recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse
-                ))
+        record.append(dict(
+            do=do, da=da, dz=dz, db=db, sigma=sigma, iter=i_batch, mask_ratio=mask_ratio,
+            recon_loss=recon_loss, act_mse=act_mse, obs_mse=obs_mse, noi_mse=noi_mse
+        ))
 
-                total_record = pd.DataFrame(record)
-                total_record.to_csv(f'4_3_learnA{learn_A}_CDzero{CD_zero}_psdlatent{pseudo_latent}.csv')
+        total_record = pd.DataFrame(record)
+        total_record.to_csv(f'7_learnA{learn_A}_CDzero{CD_zero}_psdlatent{pseudo_latent}_v2.csv')
 
 
 if __name__ == '__main__':
