@@ -12,22 +12,22 @@ import torch.nn.functional as F
 # the model is trained to reconstruct the next frame in the movie
 # given the current frame and the next frame
 
-data_path_clean = '/home/timpearce/02_lam/dataset_01/'
+data_path_clean = 'dataset/noise_0.25/'
 # data_path = '/home/timpearce/02_lam/dataset_0.95/'
 # data_path = '/home/timpearce/02_lam/dataset_0.99/'
-data_path = '/home/timpearce/02_lam/dataset_01/'
+# data_path = '/home/timpearce/02_lam/dataset_01/'
 
 # save_path_viz = '/home/timpearce/02_lam/01_visualizations_02/' # action sweep good
 # save_path_viz = '/home/timpearce/02_lam/01_visualizations_03_intensity/' # trying rerun over intensity
-save_path_viz = '/home/timpearce/02_lam/01_visualizations_04_debug/' # try to get 5 codes working
-save_path_viz = '/home/timpearce/02_lam/01_visualizations_05_action/' # rerunning for action prop test 
-save_path_viz = '/home/timpearce/02_lam/01_visualizations_06_action/' # rerunning for action prop test, trying mlp
-save_path_viz = '/home/timpearce/02_lam/01_visualizations_07_cleanrun/' 
-save_path_viz = '/home/timpearce/02_lam/01_visualizations_08_cleanrun_lowcommit/' 
-save_path_viz = '/home/timpearce/02_lam/01_visualizations_08_cleanrun_lowcommit_dataset0.95/' 
-# save_path_viz = '/home/timpearce/02_lam/01_visualizations_08_cleanrun_lowcommit_dataset0.99/' 
-save_path_viz = '/home/timpearce/02_lam/01_visualizations_09/' 
-save_path_viz = '/home/timpearce/02_lam/01_visualizations_10/' 
+# save_path_viz = '/home/timpearce/02_lam/01_visualizations_04_debug/' # try to get 5 codes working
+# save_path_viz = '/home/timpearce/02_lam/01_visualizations_05_action/' # rerunning for action prop test 
+# save_path_viz = '/home/timpearce/02_lam/01_visualizations_06_action/' # rerunning for action prop test, trying mlp
+# save_path_viz = '/home/timpearce/02_lam/01_visualizations_07_cleanrun/' 
+# save_path_viz = '/home/timpearce/02_lam/01_visualizations_08_cleanrun_lowcommit/' 
+# save_path_viz = '/home/timpearce/02_lam/01_visualizations_08_cleanrun_lowcommit_dataset0.95/' 
+# # save_path_viz = '/home/timpearce/02_lam/01_visualizations_08_cleanrun_lowcommit_dataset0.99/' 
+# save_path_viz = '/home/timpearce/02_lam/01_visualizations_09/' 
+save_path_viz = 'results/noise_0.25/' 
 
 
 n_latent = 16 # was 16

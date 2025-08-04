@@ -18,7 +18,7 @@ n_noise_rows = 1
 intensity = 0.25 # noise intensity
 # save_path_data = '/home/timpearce/02_lam/dataset_01/'
 # save_path_data = '/home/timpearce/02_lam/dataset_0.95/'
-save_path_data = 'results/noise_0.25/'
+save_path_data = 'dataset/noise_0.25/'
 save_path_viz = 'visualization/noise_0.25/'
 policy_corr = 0
 
