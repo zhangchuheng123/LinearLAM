@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torchvision.io import write_video
 import cv2
+import os
 
 # this script will create a dataset for the LAM model
 # it will be a movie of very small size
@@ -10,16 +11,19 @@ import cv2
 # 4x actions moving the pixel in the 4 directions
 
 # size of the movie
-n_pixels = (3,4)
+n_pixels = (3, 4)
 n_frames = 200
 n_traj = 4000
 n_noise_rows = 1
 intensity = 0.25 # noise intensity
 # save_path_data = '/home/timpearce/02_lam/dataset_01/'
 # save_path_data = '/home/timpearce/02_lam/dataset_0.95/'
-save_path_data = '/home/timpearce/02_lam/dataset_0.99/'
-save_path_viz = '/home/timpearce/02_lam/01_visualizations/'
-policy_corr = 0.99 # how 
+save_path_data = 'results/noise_0.25/'
+save_path_viz = 'visualization/noise_0.25/'
+policy_corr = 0
+
+os.makedirs(save_path_data, exist_ok=True)
+os.makedirs(save_path_viz, exist_ok=True)
 
 # create the trajectory
 for traj_i in range(n_traj):
