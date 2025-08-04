@@ -13,6 +13,7 @@ import torch.nn.functional as F
 # given the current frame and the next frame
 
 data_path_clean = 'dataset/noise_0.25/'
+data_path = 'dataset/noise_0.25/'
 # data_path = '/home/timpearce/02_lam/dataset_0.95/'
 # data_path = '/home/timpearce/02_lam/dataset_0.99/'
 # data_path = '/home/timpearce/02_lam/dataset_01/'
@@ -41,7 +42,7 @@ device = 'cuda'
 # for intensity in [1.0, 2.0]:
 # for intensity in [0.0, 1.0, 2.0, 4.0]: # _03
 # for intensity in [0.0, 4.0, 8.0]: # _04
-for intensity in [4.0]: # _05
+for intensity in [0.25]: # _05
     # for codebook_size in [2,3,4,5,6,8,10,20,40,80]:
     # for codebook_size in [4, 8, 16, 64, 256, 512, 1024, 2048]: # _03
     # for codebook_size in [1024]: # _04
@@ -53,7 +54,8 @@ for intensity in [4.0]: # _05
         # for action_prop in [0.0, 0.001, 0.01, 0.05, 0.1, 1.0]:
         for action_prop in [0.0]:
             # for k_data_aug in [0., 0.1]:
-            for k_data_aug in [1.0]:
+            for k_data_aug in [0.0]:
+
                 print('intensity', intensity)
                 print('codebook_size', codebook_size)
                 print('action_prop', action_prop)
