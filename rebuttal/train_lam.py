@@ -30,6 +30,7 @@ data_path = 'dataset/noise_0.25/'
 # save_path_viz = '/home/timpearce/02_lam/01_visualizations_09/' 
 save_path_viz = 'results/noise_0.25/' 
 
+os.makedirs(save_path_viz)
 
 n_latent = 16 # was 16
 # codebook_size = 2048
@@ -531,5 +532,6 @@ for intensity in [0.25]: # _05
                 reconstruct(x_curr_test.clone().to(device), x_next_test.clone().to(device), a_curr_test.clone().to(device), save_name='post_recon_frame_3.png')
 
                 # save losses
+                print(loss_all)
                 np.save(save_path_viz + 'save_losses_codes'+str(codebook_size)+'_intensity'+str(intensity)+'_actionprop'+str(action_prop)+'_k_data_aug'+str(k_data_aug)+'.npy', np.array(loss_all))
 
